@@ -898,6 +898,41 @@ async def test_client_connect_gets_no_retained_from_foreign_subscriptions(broker
 
 
 @pytest.mark.asyncio
+async def test_client_subscribe_gets_retained_with_publish_qos(broker):
+    await _client_publish("/qos0", b"data0", QOS_0, retain=True)
+
+    sub_client = MQTTClient(client_id='test_subscriber', config={'auto_reconnect': False})
+    await sub_client.connect("mqtt://127.0.0.1")
+    assert await sub_client.subscribe([("/qos0", QOS_1)]) == [QOS_1]
+
+    # [MQTT-3.8.4]: delivered with the lower of the publish and the subscription QoS
+    message = await sub_client.deliver_message(timeout_duration=1)
+    assert message is not None
+    assert message.topic == "/qos0"
+    assert message.qos == QOS_0
+    await sub_client.disconnect()
+    await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
+async def test_client_subscribe_publish_downgrades_to_publish_qos(broker):
+    sub_client = MQTTClient(client_id='test_subscriber', config={'auto_reconnect': False})
+    await sub_client.connect("mqtt://127.0.0.1")
+    assert await sub_client.subscribe([("/qos0", QOS_1), ("/qos1", QOS_2)]) == [QOS_1, QOS_2]
+
+    await _client_publish("/qos0", b"data0", QOS_0)
+    await _client_publish("/qos1", b"data1", QOS_1)
+    # [MQTT-3.8.4]: delivered with the lower of the publish and the subscription QoS
+    for qos in [QOS_0, QOS_1]:
+        message = await sub_client.deliver_message(timeout_duration=1)
+        assert message is not None
+        assert message.topic == f"/qos{qos}"
+        assert message.qos == qos
+    await sub_client.disconnect()
+    await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
 async def _client_publish(topic, data, qos, retain=False) -> int | OutgoingApplicationMessage:
 
     gen_id = "pub_"

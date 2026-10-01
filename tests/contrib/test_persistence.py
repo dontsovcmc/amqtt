@@ -635,7 +635,8 @@ async def test_broker_client_retain_subscription(db_config, broker_test_resource
     # client1's subscription should have been restored, so when it connects, it should receive this message
     c2 = broker_test_resources.client(MQTTClient(client_id='test_client2', config={'auto_reconnect':False}))
     await c2.connect(broker_uri(db_config, "myOtherUsername"), cleansession=False)
-    await c2.publish('my/offline/topic', b'standard message to be retained for offline clients')
+    # QoS 1: an offline session is owed only messages delivered with QoS > 0 [MQTT-3.1.2.4]
+    await c2.publish('my/offline/topic', b'standard message to be retained for offline clients', qos=QOS_1)
     await asyncio.sleep(0.1)
     await c2.disconnect()
 
@@ -677,7 +678,8 @@ async def test_broker_client_retain_message(db_config, broker_test_resources) ->
     await c2.connect(broker_uri(db_config, "myOtherUsername"), cleansession=False)
 
     # this message should be delivered after broker stops and restarts (and client connects)
-    await c2.publish('my/offline/topic', b'standard message to be retained for offline clients')
+    # QoS 1: an offline session is owed only messages delivered with QoS > 0 [MQTT-3.1.2.4]
+    await c2.publish('my/offline/topic', b'standard message to be retained for offline clients', qos=QOS_1)
     await asyncio.sleep(0.1)
     await c2.disconnect()
     await asyncio.sleep(0.1)

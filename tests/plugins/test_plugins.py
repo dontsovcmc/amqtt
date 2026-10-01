@@ -226,7 +226,8 @@ async def test_retained_message_plugin_event():
 
     client2 = MQTTClient(config={'auto_reconnect': False})
     await client2.connect("mqtt://myOtherUsername@127.0.0.1:1883/", cleansession=True)
-    await client2.publish('test/topic', b'message should be retained for myUsername since subscription was qos > 0')
+    # both the subscription and the publish are qos > 0, so the message is delivered with qos 1 [MQTT-3.8.4]
+    await client2.publish('test/topic', b'message should be retained for myUsername', qos=QOS_1)
     await client2.publish('test/retained', b'', retain=True)  # should clear previously retained message
     await asyncio.sleep(0.1)
     await client2.disconnect()

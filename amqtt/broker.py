@@ -791,7 +791,7 @@ class Broker:
                 client_id=client_session.client_id,
                 message=app_message,
             )
-            await self._broadcast_message(client_session, app_message.topic, app_message.data)
+            await self._broadcast_message(client_session, app_message.topic, app_message.data, app_message.qos)
             if app_message.publish_packet and app_message.publish_packet.retain_flag:
                 await self.retain_message(client_session, app_message.topic, app_message.data, app_message.qos)
         return True
@@ -1026,7 +1026,8 @@ class Broker:
                 continue
 
             for target_session, sub_qos in subscriptions:
-                qos = broadcast.get("qos", sub_qos)
+                # [MQTT-3.8.4] the lower of the publish and the subscription QoS
+                qos = sub_qos if broadcast.get("qos") is None else min(sub_qos, broadcast["qos"])
 
                 sendable = await self._topic_filtering(target_session, topic=broadcast["topic"], action=Action.RECEIVE)
                 if not sendable:
@@ -1153,7 +1154,12 @@ class Broker:
                 if handler:
                     publish_tasks.append(
                         asyncio.Task(
-                            handler.mqtt_publish(retained.topic, retained.data, min(qos, retained.qos or qos), retain=True),
+                            handler.mqtt_publish(
+                                retained.topic,
+                                retained.data,
+                                qos if retained.qos is None else min(qos, retained.qos),
+                                retain=True,
+                            ),
                         ),
                     )
         if publish_tasks:
