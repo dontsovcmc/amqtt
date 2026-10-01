@@ -631,6 +631,8 @@ class Broker:
                 )
 
                 if disconnect_waiter in done:
+                    # what the client published before leaving is still queued: deliver it before ending the session
+                    await self._deliver_remaining_messages(client_session, handler, wait_deliver)
                     # handle the disconnection: normal or abnormal result, either way, the client is no longer connected
                     await self._handle_disconnect(client_session, handler, disconnect_waiter)
                     connected = False
@@ -646,7 +648,7 @@ class Broker:
                     await self._handle_unsubscription(client_session, handler, unsubscribe_waiter)
                     unsubscribe_waiter = asyncio.ensure_future(handler.get_next_pending_unsubscription())
 
-                if wait_deliver in done:
+                if wait_deliver in done and connected:
                     if not await self._handle_message_delivery(client_session, handler, wait_deliver):
                         break
                     wait_deliver = asyncio.ensure_future(handler.mqtt_deliver_next_message())
@@ -659,6 +661,26 @@ class Broker:
         for waiter in pending_waiters:
             waiter.cancel()
         await asyncio.gather(*pending_waiters, return_exceptions=True)
+
+    async def _deliver_remaining_messages(
+        self,
+        client_session: Session,
+        handler: BrokerProtocolHandler,
+        wait_deliver: asyncio.Future[Any],
+    ) -> None:
+        """Deliver the messages the client published before its connection ended."""
+        # stop the waiter first: left running, it would take the next message off the queue and drop it when cancelled
+        wait_deliver.cancel()
+        taken = await asyncio.gather(wait_deliver, return_exceptions=True)
+        messages = [message for message in taken if isinstance(message, ApplicationMessage)]
+        while not client_session.delivered_message_queue.empty():
+            messages.append(client_session.delivered_message_queue.get_nowait())
+
+        for message in messages:
+            delivered: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+            delivered.set_result(message)
+            if not await self._handle_message_delivery(client_session, handler, delivered):
+                break
 
     async def _handle_disconnect(
         self,

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import logging.config
 import secrets
@@ -928,6 +929,44 @@ async def test_client_subscribe_publish_downgrades_to_publish_qos(broker):
         assert message is not None
         assert message.topic == f"/qos{qos}"
         assert message.qos == qos
+    await sub_client.disconnect()
+    await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ending", ["disconnect", "eof"])
+async def test_client_publish_burst_before_leaving_is_delivered(broker, ending):
+    sub_client = MQTTClient(client_id='test_subscriber', config={'auto_reconnect': False})
+    await sub_client.connect("mqtt://127.0.0.1")
+    assert await sub_client.subscribe([("/burst/#", QOS_0)]) == [QOS_0]
+
+    conn_reader, conn_writer = await asyncio.open_connection("127.0.0.1", 1883)
+    vh = ConnectVariableHeader()
+    vh.keep_alive = 10
+    vh.clean_session_flag = True
+    payload = ConnectPayload()
+    payload.client_id = "test_burst"
+    await ConnectPacket(variable_header=vh, payload=payload).to_stream(StreamWriterAdapter(conn_writer))
+    await ConnackPacket.from_stream(StreamReaderAdapter(conn_reader))
+
+    # a client that publishes and leaves at once: everything arrives in one segment
+    count = 50
+    burst = b"".join(
+        PublishPacket.build(f"/burst/{index}", b"data", None, False, QOS_0, False).to_bytes()
+        for index in range(count)
+    )
+    if ending == "disconnect":
+        burst += DisconnectPacket().to_bytes()
+    conn_writer.write(burst)
+    await conn_writer.drain()
+    conn_writer.close()
+
+    topics = []
+    with contextlib.suppress(asyncio.TimeoutError):
+        while len(topics) < count:
+            message = await sub_client.deliver_message(timeout_duration=2)
+            topics.append(message.topic)
+    assert topics == [f"/burst/{index}" for index in range(count)]
     await sub_client.disconnect()
     await asyncio.sleep(0.1)
 
