@@ -1,3 +1,9 @@
+> **Fork of [Yakifo/amqtt](https://github.com/Yakifo/amqtt) v0.12.1** for the Waterius hardware-in-the-loop
+> stand, version `0.12.1+waterius.N`. It adds three broker fixes on top of the release, each with its test:
+> retained messages on connect follow the client's own subscriptions, delivery QoS is the lower of the publish
+> and the subscription QoS, and messages published right before DISCONNECT are delivered.
+> Install: `pip install "amqtt @ git+https://github.com/dontsovcmc/amqtt@v0.12.1-waterius.1"`.
+
 [![MIT licensed](https://img.shields.io/github/license/Yakifo/amqtt?style=plastic&logo=opensourceinitiative&logoColor=white)](https://amqtt.readthedocs.io/en/latest/)
 [![CI](https://github.com/Yakifo/amqtt/actions/workflows/ci.yml/badge.svg)](https://github.com/Yakifo/amqtt/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Yakifo/amqtt/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/Yakifo/amqtt/actions/workflows/codeql-analysis.yml)
