@@ -28,7 +28,7 @@ from amqtt.session import ApplicationMessage, OutgoingApplicationMessage, Sessio
 from amqtt.utils import format_client_message, gen_client_id
 
 from .events import BrokerEvents
-from .mqtt.constants import QOS_0, QOS_1, QOS_2
+from .mqtt.constants import QOS_1, QOS_2
 from .mqtt.disconnect import DisconnectPacket
 from .plugins.manager import PluginManager
 
@@ -598,8 +598,14 @@ class Broker:
 
         # if this is not a new session, there are subscriptions associated with them; publish any topic retained messages
         self.logger.debug("Publish retained messages to a pre-existing session's subscriptions.")
-        for topic in self._subscriptions:
-            await self._publish_retained_messages_for_subscription((topic, QOS_0), client_session)
+        own_subscriptions = [
+            (a_filter, qos)
+            for a_filter, subscriptions in self._subscriptions.items()
+            for sub_session, qos in subscriptions
+            if sub_session.client_id == client_session.client_id
+        ]
+        for subscription in own_subscriptions:
+            await self._publish_retained_messages_for_subscription(subscription, client_session)
 
         await self._client_message_loop(client_session, handler)
 

@@ -879,6 +879,25 @@ async def test_client_publish_retain_subscribe_on_reconnect(broker):
 
 
 @pytest.mark.asyncio
+async def test_client_connect_gets_no_retained_from_foreign_subscriptions(broker):
+    sub_client = MQTTClient(client_id='test_subscriber', config={'auto_reconnect': False})
+    await sub_client.connect("mqtt://127.0.0.1")
+    assert await sub_client.subscribe([("/qos0", QOS_0)]) == [QOS_0]
+    await _client_publish("/qos0", b"data0", QOS_0, retain=True)
+    assert await sub_client.deliver_message(timeout_duration=1) is not None
+
+    # [MQTT-3.3.1-6]: retained messages follow the client's own subscriptions, and this one has none
+    new_client = MQTTClient(client_id='test_newcomer', config={'auto_reconnect': False})
+    await new_client.connect("mqtt://127.0.0.1")
+    with pytest.raises(asyncio.TimeoutError):
+        await new_client.deliver_message(timeout_duration=1)
+
+    await new_client.disconnect()
+    await sub_client.disconnect()
+    await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
 async def _client_publish(topic, data, qos, retain=False) -> int | OutgoingApplicationMessage:
 
     gen_id = "pub_"
